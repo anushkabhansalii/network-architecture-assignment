@@ -67,6 +67,40 @@ class TestPersistentConnection:
         resp = _get(raw_connection, "/index.html")
         assert resp.status == 200
 
+    def test_invalid_utf8_path_gets_400_and_connection_survives(self, raw_connection):
+        """Regression for the exact defect behind the brief's 400 rule: a
+        GET whose path bytes are not valid UTF-8 (01 00 02 2f ff 00) used
+        to raise an uncaught UnicodeDecodeError in decode_request and drop
+        the connection with no response at all. Now it must return a 400
+        and the connection must stay usable."""
+        from binhttp.frame import write_frame as _write_frame
+
+        bad_payload = bytes([C.METHOD_GET]) + (2).to_bytes(2, "big") + b"/\xff" + b"\x00"
+        _write_frame(raw_connection, C.FRAME_TYPE_REQUEST, bad_payload)
+        frame = read_known_frame(raw_connection, frozenset({C.FRAME_TYPE_RESPONSE}))
+        resp = decode_response(frame.payload)
+        assert resp.status == 400
+
+        resp = _get(raw_connection, "/index.html")
+        assert resp.status == 200
+
+    def test_invalid_utf8_header_gets_400_and_connection_survives(self, raw_connection):
+        """Same guarantee at the header layer: a well-formed frame whose
+        header block contains non-UTF-8 bytes gets a 400, not a dropped
+        connection."""
+        from binhttp.frame import write_frame as _write_frame
+
+        path = b"/index.html"
+        bad_headers = bytes([1, C.HEADER_CUSTOM_MARKER, 2, 0xC0, 0xC0]) + (0).to_bytes(2, "big")
+        bad_payload = bytes([C.METHOD_GET]) + (len(path)).to_bytes(2, "big") + path + bad_headers
+        _write_frame(raw_connection, C.FRAME_TYPE_REQUEST, bad_payload)
+        frame = read_known_frame(raw_connection, frozenset({C.FRAME_TYPE_RESPONSE}))
+        resp = decode_response(frame.payload)
+        assert resp.status == 400
+
+        resp = _get(raw_connection, "/index.html")
+        assert resp.status == 200
+
     def test_server_closes_cleanly_when_client_closes(self, running_server):
         host, port = running_server
         sock = socket.create_connection((host, port), timeout=5)
