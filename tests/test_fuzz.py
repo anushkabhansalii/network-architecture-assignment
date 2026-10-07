@@ -125,9 +125,11 @@ class TestFuzzHeaderBlock:
                 decode_headers(buf, 0)
 
     def test_malformed_custom_name_utf8_rejected_cleanly(self):
-        # 0xFF marker, name_len=2, then an invalid UTF-8 byte pair
+        # 0xFF marker, name_len=2, then an invalid UTF-8 byte pair.
+        # Must be a ProtocolError specifically -- a leaked UnicodeDecodeError
+        # would bypass the server's 400 path and kill the connection.
         buf = bytes([1, 0xFF, 2, 0xC0, 0xC0]) + struct.pack(">H", 0)
-        with pytest.raises((ProtocolError, UnicodeDecodeError)):
+        with pytest.raises(ProtocolError):
             decode_headers(buf, 0)
 
 
