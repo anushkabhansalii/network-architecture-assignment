@@ -142,6 +142,27 @@ class TestRequest:
         with pytest.raises(ProtocolError):
             encode_request(C.METHOD_GET, "/" + "a" * C.MAX_PATH_LENGTH, [])
 
+    def test_invalid_utf8_path_rejected_cleanly(self):
+        # Regression: a non-UTF-8 path used to surface as a raw
+        # UnicodeDecodeError, escaping the server's ProtocolError handler
+        # and dropping the connection with no 400. It must be a
+        # ProtocolError like every other malformed payload.
+        payload = bytes([C.METHOD_GET]) + struct.pack(">H", 2) + b"/\xff" + b"\x00"
+        with pytest.raises(ProtocolError, match="UTF-8"):
+            decode_request(payload)
+
+    def test_invalid_utf8_custom_header_name_rejected_cleanly(self):
+        # count=1, custom-name marker, name_len=2, invalid UTF-8 bytes, empty value
+        buf = bytes([1, C.HEADER_CUSTOM_MARKER, 2, 0xC0, 0xC0]) + struct.pack(">H", 0)
+        with pytest.raises(ProtocolError, match="UTF-8"):
+            decode_headers(buf, 0)
+
+    def test_invalid_utf8_header_value_rejected_cleanly(self):
+        name_id = C.HEADER_NAME_TO_ID["host"]
+        buf = bytes([1, name_id]) + struct.pack(">H", 2) + b"\xff\xfe"
+        with pytest.raises(ProtocolError, match="UTF-8"):
+            decode_headers(buf, 0)
+
 
 class TestResponse:
     def test_round_trip(self):
