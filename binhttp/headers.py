@@ -78,7 +78,10 @@ def decode_headers(buf: bytes, offset: int) -> Tuple[HeaderList, int]:
             offset += 1
             if offset + name_len > len(buf):
                 raise ProtocolError("truncated header block: missing name bytes")
-            name = buf[offset : offset + name_len].decode("utf-8", errors="strict")
+            try:
+                name = buf[offset : offset + name_len].decode("utf-8", errors="strict")
+            except UnicodeDecodeError as exc:
+                raise ProtocolError(f"header name is not valid UTF-8: {exc}") from exc
             offset += name_len
         elif name_id < len(C.HEADER_TABLE):
             name = C.HEADER_TABLE[name_id]
@@ -91,7 +94,10 @@ def decode_headers(buf: bytes, offset: int) -> Tuple[HeaderList, int]:
         offset += 2
         if offset + value_len > len(buf):
             raise ProtocolError("truncated header block: missing value bytes")
-        value = buf[offset : offset + value_len].decode("utf-8", errors="strict")
+        try:
+            value = buf[offset : offset + value_len].decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise ProtocolError(f"header value is not valid UTF-8: {exc}") from exc
         offset += value_len
 
         headers.append((name, value))
