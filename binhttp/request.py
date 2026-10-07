@@ -50,7 +50,10 @@ def decode_request(payload: bytes) -> Request:
     offset = 3
     if offset + path_len > len(payload):
         raise ProtocolError("truncated request: path shorter than declared path_length")
-    path = payload[offset : offset + path_len].decode("utf-8", errors="strict")
+    try:
+        path = payload[offset : offset + path_len].decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ProtocolError(f"path is not valid UTF-8: {exc}") from exc
     offset += path_len
 
     headers, offset = decode_headers(payload, offset)
